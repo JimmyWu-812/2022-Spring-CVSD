@@ -100,8 +100,8 @@ module testbed;
     always #(`CYCLE/2.0) i_clk = ~i_clk; 
 
     initial begin
-       $fsdbDumpfile("alu.fsdb");
-       $fsdbDumpvars(0, testbed, "+mda");
+       $dumpfile("alu.vcs");
+       $dumpvars(0, testbed);
     end
 
     initial begin
