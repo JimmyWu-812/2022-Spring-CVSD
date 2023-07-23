@@ -30,9 +30,10 @@ wire [18:0] o_data_r_extended;
 wire        overflow_ADD_pos, overflow_ADD_neg, overflow_SUB_pos, overflow_SUB_neg;
 wire        overflow_MUL_pos, overflow_MUL_neg, overflow_MAC_pos, overflow_MAC_neg;
 
+wire [9:0]  alu_ADD_tmp, alu_SUB_tmp;
 wire [18:0] alu_MUL_tmp, alu_MAC_tmp;
 wire [12:0] alu_MUL_tmp_rounded, alu_MAC_tmp_rounded;
-wire [9:0]  alu_ADD_tmp, alu_SUB_tmp;
+
 wire [9:0]  alu_ADD, alu_SUB, alu_MUL, alu_MAC, alu_TANH;
 wire [9:0]  alu_ORN, alu_CLZ, alu_CTZ, aku_CPOP, alu_ROL;
 
@@ -42,31 +43,32 @@ wire [9:0]  alu_ORN, alu_CLZ, alu_CTZ, aku_CPOP, alu_ROL;
 assign o_valid = o_valid_r;
 assign o_data = o_data_r;
 // ---- Add your own wire data assignments here if needed ---- //
-assign MIN_THRESHOLD = 13'b0_0001_1111_1111;
-assign MAX_THRESHOLD = 13'b1_1110_0000_0000;
-assign MIN_VALUE = 10'b10_0000_0000;
-assign MAX_VALUE = 10'b01_1111_1111;
+assign MIN_THRESHOLD = 13'b0000111_111111;
+assign MAX_THRESHOLD = 13'b1111000_000000;
+assign MIN_VALUE = 10'b1000_000000;
+assign MAX_VALUE = 10'b0111_111111;
 
 assign alu_data_a = i_valid ? i_data_a : 0;
 assign alu_data_b = i_valid ? i_data_b : 0;
-assign alu_inst = i_valid ? i_inst : 4'b1111;
+assign alu_inst = i_valid ? i_inst   : 4'b1111;
+
 assign o_data_r_extended = {{3{o_data_r[9]}}, o_data_r, 6'b0};
 
 assign alu_ADD_tmp = $signed(alu_data_a)+$signed(alu_data_b);
 assign alu_SUB_tmp = $signed(alu_data_a)-$signed(alu_data_b);
 assign alu_MUL_tmp = $signed(alu_data_a)*$signed(alu_data_b);
-assign alu_MUL_tmp_rounded = alu_MUL_tmp[5] ? alu_MUL_tmp[18:6] + 1 : alu_MUL_tmp[18:6];
+assign alu_MUL_tmp_rounded = alu_MUL_tmp[5] ? alu_MUL_tmp[18:6]+1 : alu_MUL_tmp[18:6];
 assign alu_MAC_tmp = $signed(alu_MUL_tmp)+$signed(o_data_r_extended);
-assign alu_MAC_tmp_rounded = alu_MAC_tmp[5] ? alu_MAC_tmp[18:6] + 1 : alu_MAC_tmp[18:6];
+assign alu_MAC_tmp_rounded = alu_MAC_tmp[5] ? alu_MAC_tmp[18:6]+1 : alu_MAC_tmp[18:6];
 
-assign overflow_ADD_pos = ~alu_data_a[9] & ~alu_data_b[9] & alu_ADD_tmp[9];
-assign overflow_ADD_neg = alu_data_a[9] & alu_data_b[9] & ~alu_ADD_tmp[9];
-assign overflow_SUB_pos = ~alu_data_a[9] & alu_data_b[9] & alu_SUB_tmp[9];
-assign overflow_SUB_neg = alu_data_a[9] & ~alu_data_b[9] & ~alu_SUB_tmp[9];
+assign overflow_ADD_pos = ~alu_data_a[9] & ~alu_data_b[9] &  alu_ADD_tmp[9];
+assign overflow_ADD_neg =  alu_data_a[9] &  alu_data_b[9] & ~alu_ADD_tmp[9];
+assign overflow_SUB_pos = ~alu_data_a[9] &  alu_data_b[9] &  alu_SUB_tmp[9];
+assign overflow_SUB_neg =  alu_data_a[9] & ~alu_data_b[9] & ~alu_SUB_tmp[9];
 assign overflow_MUL_pos = ~alu_MUL_tmp_rounded[12] & (alu_MUL_tmp_rounded > MIN_THRESHOLD);
-assign overflow_MUL_neg = alu_MUL_tmp_rounded[12] & (alu_MUL_tmp_rounded < MAX_THRESHOLD);
+assign overflow_MUL_neg =  alu_MUL_tmp_rounded[12] & (alu_MUL_tmp_rounded < MAX_THRESHOLD);
 assign overflow_MAC_pos = ~alu_MAC_tmp_rounded[12] & (alu_MAC_tmp_rounded > MIN_THRESHOLD);
-assign overflow_MAC_neg = alu_MAC_tmp_rounded[12] & (alu_MAC_tmp_rounded < MAX_THRESHOLD);
+assign overflow_MAC_neg =  alu_MAC_tmp_rounded[12] & (alu_MAC_tmp_rounded < MAX_THRESHOLD);
 
 assign alu_ADD = overflow_ADD_pos ? MAX_VALUE : 
                  overflow_ADD_neg ? MIN_VALUE : alu_ADD_tmp;
@@ -76,6 +78,11 @@ assign alu_MUL = overflow_MUL_pos ? MAX_VALUE :
                  overflow_MUL_neg ? MIN_VALUE : alu_MUL_tmp_rounded;
 assign alu_MAC = overflow_MAC_pos ? MAX_VALUE : 
                  overflow_MAC_neg ? MIN_VALUE : alu_MAC_tmp_rounded;
+assign alu_TANH = alu_data_a[9] ? (
+                  (alu_data_a < 10'b1110_100000) ? 10'b1111_000000 : 
+                  (alu_data_a < 10'b1111_100000) ? {1'b1, alu_data_a[9:1]} + 10'b1111_110000 : alu_data_a) : (
+                  (alu_data_a > 10'b0001_100000) ? 10'b0001_000000 : 
+                  (alu_data_a > 10'b0000_100000) ? {1'b0, alu_data_a[9:1]} + 10'b0000_010000 : alu_data_a);
 
 // ---------------------------------------------------------------------------
 // Combinational Blocks
@@ -89,6 +96,7 @@ always@(*) begin
         4'b0001: o_data_w = alu_SUB;
         4'b0010: o_data_w = alu_MUL;
         4'b0011: o_data_w = alu_MAC;
+        4'b0100: o_data_w = alu_TANH;
     endcase
     o_valid_w = i_valid;
 end
